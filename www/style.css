@@ -1,0 +1,557 @@
+/**
+ * KinshipAssembly — application stylesheet
+ *
+ * Layout, Shiny-specific overrides, DataTables, and modal sizing for
+ * pedigree plots and likelihood-ratio detail views. Section banners group
+ * related rules for maintainability.
+ */
+
+/* ============================================
+   Global — base document typography and canvas
+   ============================================ */
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f7fa;
+}
+
+/* ============================================
+   Application header — full-bleed bar below Shiny fluidPage padding
+   ============================================ */
+
+/* Negative horizontal margins counteract fluidPage padding for edge-to-edge width;
+   top margin is zero so the header aligns with the viewport top. */
+div.main-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: #fff;
+  padding: 2.5rem 1.5rem 1.75rem 1.5rem;
+  margin: 0 -15px 20px -15px;
+  border-radius: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: flex-start;
+  align-items: stretch;
+  flex-wrap: wrap;
+  min-height: 7.5rem;
+  box-sizing: border-box;
+}
+
+.main-header-content {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  padding-top: 0;
+}
+
+.main-header h1 {
+  margin: 0 !important;
+  padding: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35em;
+}
+
+.main-header h3 {
+  margin: 0.75rem 0 0 0 !important;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 400;
+  opacity: 0.9;
+  line-height: 1.35;
+  max-width: 100%;
+}
+
+/* ============================================
+   Sidebar / Panels
+   ============================================ */
+
+.sidebar-panel {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  padding: 20px;
+}
+
+.section-title {
+  color: #667eea;
+  font-weight: 600;
+  margin-top: 20px;
+  margin-bottom: 15px;
+  font-size: 16px;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35em 0.5em;
+}
+
+/* Inline Shiny outputs (e.g. lock/check icons) align with the section heading. */
+.section-title .shiny-html-output {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
+/* File upload: label and status row above the file input control. */
+.upload-file-block {
+  margin-bottom: 4px;
+}
+
+.upload-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+}
+
+.upload-field-label {
+  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.upload-status-inline {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.upload-status-inline .status-badge {
+  margin-top: 0;
+}
+
+.upload-status-inline .help-text {
+  align-self: stretch;
+  text-align: left;
+}
+
+.well {
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* ============================================
+   Status badges
+   ============================================ */
+
+.status-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+.status-success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.status-info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+
+.btn-action {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.btn-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-primary {
+  background-color: #3498db;
+  border-color: #3498db;
+}
+
+.btn-primary:hover {
+  background-color: #2980b9;
+  border-color: #2980b9;
+}
+
+.btn-success {
+  background-color: #2ecc71;
+  border-color: #2ecc71;
+}
+
+.btn-success:hover {
+  background-color: #27ae60;
+  border-color: #27ae60;
+}
+
+/* ============================================
+   Cards
+   ============================================ */
+
+.info-card {
+  background: white;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 4px solid #667eea;
+}
+
+.info-card h5 {
+  margin-top: 0;
+  color: #667eea;
+  font-weight: 600;
+}
+
+/* ============================================
+   Tables / DataTables
+   ============================================ */
+
+.dataTables_wrapper {
+  background: white;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  font-size: 14px;
+}
+
+/* Filtered LR results: center table body, headers, and DataTables filter/length UI. */
+#filtered_results_table table.dataTable > thead > tr > th,
+#filtered_results_table table.dataTable > thead > tr > td,
+#filtered_results_table table.dataTable > tbody > tr > td {
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+#filtered_results_table .dataTables_filter,
+#filtered_results_table .dataTables_length {
+  text-align: center;
+}
+
+#filtered_results_table .dataTables_filter label,
+#filtered_results_table .dataTables_length label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  flex-wrap: wrap;
+}
+
+/* ============================================
+   Pedigree plot container
+   ============================================ */
+
+.pedigree-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+/* ============================================
+   Progress / notifications
+   ============================================ */
+
+.progress {
+  height: 25px;
+  border-radius: 5px;
+}
+
+.progress-container {
+  margin: 20px 0;
+}
+
+.shiny-notification {
+  border-radius: 5px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* ============================================
+   Tabs
+   ============================================ */
+
+.nav-tabs > li > a {
+  color: #667eea;
+  font-weight: 500;
+}
+
+.nav-tabs > li.active > a {
+  background-color: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+/* ============================================
+   Inputs & help text
+   ============================================ */
+
+.shiny-input-container {
+  margin-bottom: 15px;
+}
+
+.help-text {
+  font-size: 12px;
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 5px;
+}
+
+/* Comparisons tab: compact column legend above the results table. */
+.results-column-key {
+  list-style: none;
+  padding: 10px 12px 10px 14px;
+  margin: 0 0 14px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #495057;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 3px solid #667eea;
+}
+
+.results-column-key li {
+  margin-bottom: 4px;
+  padding-left: 0;
+}
+
+.results-column-key li:last-child {
+  margin-bottom: 0;
+}
+
+.results-column-key strong {
+  color: #212529;
+  font-weight: 600;
+}
+
+/* ============================================
+   Shiny modals — width behavior by dialog type
+   ============================================ */
+/*
+ * .modal-fit-content (excluding .kinship-detail-modal): width grows with content,
+ *   capped at 96vw.
+ * .kinship-detail-modal: near-full-width dialog; pedigree plot and LR table fill
+ *   the body without horizontal scroll where possible.
+ * .kinship-reset-confirm-modal: compact confirmation dialog; no JS refit required.
+ */
+#shiny-modal .modal-dialog.kinship-reset-confirm-modal,
+.modal .modal-dialog.kinship-reset-confirm-modal {
+  width: auto !important;
+  max-width: min(28rem, calc(100vw - 2rem)) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Hidden body hook for JavaScript (reset confirmation); no visual layout. */
+.kinship-reset-confirm-marker {
+  margin: 0;
+}
+
+/* Single-column detail layout: image and table share usable width; .modal-body supplies padding. */
+.kinship-detail-modal .kinship-modal-detail-inner {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Neutralize Bootstrap .row negative margins so content width matches the pedigree block. */
+.kinship-detail-modal .kinship-modal-detail-inner > .row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  max-width: 100%;
+}
+
+.kinship-detail-modal .kinship-modal-pedigree-block {
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 8px;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Kinship comparison detail: wide fixed dialog so the pedigree does not paint narrow on first frame.
+   Shiny size="l" adds .modal-lg; these rules override Bootstrap's ~800px max-width cap. */
+#shiny-modal .modal-dialog.modal-fit-content.kinship-detail-modal,
+.modal .modal-dialog.modal-fit-content.kinship-detail-modal,
+#shiny-modal .modal-dialog.modal-lg.modal-fit-content.kinship-detail-modal,
+.modal .modal-dialog.modal-lg.modal-fit-content.kinship-detail-modal {
+  width: min(96vw, 1600px) !important;
+  max-width: 96vw !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+#shiny-modal .modal-dialog.modal-fit-content.kinship-detail-modal .modal-content,
+.modal .modal-dialog.modal-fit-content.kinship-detail-modal .modal-content,
+#shiny-modal .modal-dialog.modal-fit-content.kinship-detail-modal .modal-body,
+.modal .modal-dialog.modal-fit-content.kinship-detail-modal .modal-body {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Plot output: full-width container from first paint; image scales to available width. */
+.kinship-detail-modal .kinship-modal-pedigree-block .shiny-plot-output {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block;
+  box-sizing: border-box;
+}
+
+.kinship-detail-modal .kinship-modal-pedigree-block .shiny-plot-output img {
+  width: 100% !important;
+  height: auto !important;
+  max-width: 100% !important;
+  display: block;
+  image-rendering: auto;
+}
+
+/* DataTables / htmlwidgets chain matches the pedigree block width at 100%. */
+.kinship-detail-modal #lr_details_modal_table {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block;
+  box-sizing: border-box;
+}
+
+.kinship-detail-modal #lr_details_modal_table .html-widget,
+.kinship-detail-modal #lr_details_modal_table .datatables {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+#shiny-modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal),
+.modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) {
+  width: max-content !important;
+  max-width: 96vw !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+#shiny-modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) .modal-content,
+.modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) .modal-content,
+#shiny-modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) .modal-body,
+.modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) .modal-body {
+  width: max-content !important;
+  max-width: 96vw !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+#shiny-modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) .dataTables_wrapper,
+.modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) .dataTables_wrapper {
+  width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
+}
+
+#shiny-modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) table.dataTable,
+.modal .modal-dialog.modal-fit-content:not(.kinship-detail-modal) table.dataTable {
+  width: auto !important;
+  max-width: none !important;
+}
+
+#shiny-modal .modal-dialog.modal-fit-content .dataTables_scroll,
+#shiny-modal .modal-dialog.modal-fit-content .dataTables_scrollBody,
+#shiny-modal .modal-dialog.modal-fit-content .dataTables_scrollHead,
+.modal .modal-dialog.modal-fit-content .dataTables_scroll,
+.modal .modal-dialog.modal-fit-content .dataTables_scrollBody,
+.modal .modal-dialog.modal-fit-content .dataTables_scrollHead {
+  overflow: visible !important;
+}
+
+/* Per-marker LR table: align with pedigree block; strip extra horizontal padding from global .dataTables_wrapper. */
+.kinship-detail-modal .dataTables_wrapper {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 12px 0 !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+}
+
+.kinship-detail-modal table.dataTable {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: fixed !important;
+  box-sizing: border-box !important;
+}
+
+/* Equal column share: min-width 0 lets narrow columns shrink (drawCallback sets 100% / n). */
+.kinship-detail-modal table.dataTable > thead > tr > th,
+.kinship-detail-modal table.dataTable > tbody > tr > td {
+  min-width: 0 !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  vertical-align: middle !important;
+  hyphens: auto;
+}
+
+/* Header and body cells centered, including the Marker column. */
+.kinship-detail-modal table.dataTable > thead > tr > th,
+.kinship-detail-modal table.dataTable > tbody > tr > td {
+  text-align: center !important;
+}
+
+/* Total LR row: emphasize the LR value in the second column. */
+.kinship-detail-modal table.dataTable > tbody > tr:last-child > td:nth-child(2) {
+  font-weight: bold !important;
+}
+
+/* Partial LR = 0: light red row (overrides MPI/POI tint on that row). */
+.kinship-detail-modal table.dataTable > tbody > tr.lr-partial-zero > td {
+  background-color: #ffebee !important;
+}
+
+/* Partial LR = 1 (neutral factor): italic row; does not apply to the Total LR row. */
+.kinship-detail-modal table.dataTable > tbody > tr.lr-partial-one > td {
+  font-style: italic !important;
+}
+

@@ -1,0 +1,36 @@
+# R
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+*.Rproj
+.Rproj.user/
+
+# renv (if used)
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+# Shiny / deployment
+rsconnect/
+*.dcf
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Secrets (never commit)
+.Renviron
+.env
+.env.*
+
+# Optional: uncomment if validation data must stay private
+# validacion/
