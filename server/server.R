@@ -265,7 +265,7 @@ server <- function(input, output, session) {
           
           # Step 5: harmonise markers across pedigrees
           setProgress(value = 0.85, detail = "Harmonising markers (85%)...")
-          poic_harmonised <- harmoniseMarkers(poic_extracted, verbose = FALSE)
+          poic_harmonised <- harmoniseMarkers(poic_extracted)
           
           # Step 7: finish processing
           setProgress(value = 0.95, detail = "Finalising (95%)...")
@@ -392,7 +392,7 @@ server <- function(input, output, session) {
           
           # Step 6: harmonise markers across pedigrees
           setProgress(value = 0.8, detail = "Harmonising markers (80%)...")
-          mpi_harmonised <- harmoniseMarkers(mpi_extracted, verbose = FALSE)
+          mpi_harmonised <- harmoniseMarkers(mpi_extracted)
           
           # Step 7: finish processing
           setProgress(value = 0.9, detail = "Finalising (90%)...")

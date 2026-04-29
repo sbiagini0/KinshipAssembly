@@ -111,7 +111,7 @@ ui <- fluidPage(
                  
                  radioGroupButtons(
                    inputId = "comparison_mode",
-                   label = "Comparison mode",
+                  label = NULL,
                   choices = c("All vs all" = "all", 
                               "Choose comparisons" = "custom"),
                    selected = "all",
