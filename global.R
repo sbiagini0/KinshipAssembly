@@ -11,27 +11,26 @@ local({
     "pedFamilias",
     "tibble", "dplyr", "purrr", "stringr"
   )
-  missing_pkgs <- required_packages[!vapply(
-    required_packages,
-    function(p) requireNamespace(p, quietly = TRUE),
-    logical(1)
-  )]
-  if (length(missing_pkgs)) {
-    stop(
-      "Missing required package(s): ", paste(missing_pkgs, collapse = ", "),
-      ". Install with:\n  install.packages(c(",
-      paste0('"', missing_pkgs, '"', collapse = ", "),
-      "), dependencies = TRUE)",
-      call. = FALSE
-    )
-  }
-  for (pkg in required_packages) {
-    library(pkg, character.only = TRUE)
-  }
+  ## Cargas explicitas: mas robusto para shinylive::export (deteccion estatica de deps).
+  suppressPackageStartupMessages(library(shiny))
+  suppressPackageStartupMessages(library(later))
+  suppressPackageStartupMessages(library(DT))
+  suppressPackageStartupMessages(library(htmlwidgets))
+  suppressPackageStartupMessages(library(shinyjs))
+  suppressPackageStartupMessages(library(shinyWidgets))
+  suppressPackageStartupMessages(library(pedtools))
+  suppressPackageStartupMessages(library(kinship2))
+  suppressPackageStartupMessages(library(pedmut))
+  suppressPackageStartupMessages(library(forrel))
+  suppressPackageStartupMessages(library(pedFamilias))
+  suppressPackageStartupMessages(library(tibble))
+  suppressPackageStartupMessages(library(dplyr))
+  suppressPackageStartupMessages(library(purrr))
+  suppressPackageStartupMessages(library(stringr))
 
   # If user/session enables {conflicted}, make app intent explicit for known overlaps.
   if (requireNamespace("conflicted", quietly = TRUE)) {
-    conflicted::conflicts_prefer(dplyr::filter, dplyr::bind_rows)
+    conflicted::conflicts_prefer(dplyr::filter, dplyr::bind_rows, .quiet = TRUE)
   }
 })
 
