@@ -1426,18 +1426,21 @@ add_summary_stats <- function(result_df) {
 ped_plotbranch_neighbors <- function(x, member_int, focal_id, other_spouse_ids) {
   member_id <- x$ID[member_int]
   neighbor_ints <- integer()
-  fa <- father(x, member_id)
-  mo <- mother(x, member_id)
-  if (!is.na(fa)) neighbor_ints <- c(neighbor_ints, internalID(x, fa))
-  if (!is.na(mo)) neighbor_ints <- c(neighbor_ints, internalID(x, mo))
+  fa <- father(x, member_id)[1]
+  mo <- mother(x, member_id)[1]
+  if (length(fa) == 1L && !is.na(fa)) neighbor_ints <- c(neighbor_ints, internalID(x, fa))
+  if (length(mo) == 1L && !is.na(mo)) neighbor_ints <- c(neighbor_ints, internalID(x, mo))
   kids <- children(x, member_id)
   for (child_id in kids) {
     if (member_id == focal_id) {
-      fk <- father(x, child_id)
-      mk <- mother(x, child_id)
+      fk <- father(x, child_id)[1]
+      mk <- mother(x, child_id)[1]
       co_parent <- NA_character_
-      if (!is.na(fk) && fk == member_id) co_parent <- mother(x, child_id)
-      else if (!is.na(mk) && mk == member_id) co_parent <- father(x, child_id)
+      if (length(fk) == 1L && !is.na(fk) && fk == member_id) {
+        co_parent <- mother(x, child_id)[1]
+      } else if (length(mk) == 1L && !is.na(mk) && mk == member_id) {
+        co_parent <- father(x, child_id)[1]
+      }
       if (!is.na(co_parent) && co_parent %in% other_spouse_ids)
         next
     }
@@ -1564,14 +1567,14 @@ mp_parent_sibling_order_hints <- function(x, mp_id) {
   if (!mp_id %in% labels(x))
     return(integer(n))
   horder <- kinship2_order_init(x)
-  fa <- father(x, mp_id)
-  mo <- mother(x, mp_id)
-  if (!is.na(fa)) {
+  fa <- father(x, mp_id)[1]
+  mo <- mother(x, mp_id)[1]
+  if (length(fa) == 1L && !is.na(fa)) {
     sfi <- full_sibling_internal_ids(x, fa)
     if (length(sfi) > 1L)
       horder <- apply_sib_shift_horizontal(horder, internalID(x, fa), sfi, go_left = FALSE)
   }
-  if (!is.na(mo)) {
+  if (length(mo) == 1L && !is.na(mo)) {
     smi <- full_sibling_internal_ids(x, mo)
     if (length(smi) > 1L)
       horder <- apply_sib_shift_horizontal(horder, internalID(x, mo), smi, go_left = TRUE)
