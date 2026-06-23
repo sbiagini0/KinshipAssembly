@@ -53,7 +53,7 @@ if (nzchar(Sys.getenv("SHINY_PORT", "")) || nzchar(Sys.getenv("RSTUDIO_PRODUCT",
 }
 
 ## Application version
-VERSION <- "1.0"
+VERSION <- "1.1"
 
 ## Global configuration
 ## Logging: INFO on when running locally, off when `SHINY_PORT` is set (typical deployment).
@@ -71,6 +71,8 @@ CONFIG <- list(
   mp_id = "Missing person",
   ## Bridge label only: EXTRA_1 -> this -> mp_id before mergePed (never use EXTRA_ as merge key)
   merge_mp_transient_label = "__KINSHIP_MP__",
+  ## When mp_id is already in the pedigree, redundant EXTRA_1 is removed or parked under this label
+  extra_person_label = "EXTRA_PERSON",
   mut_model = "none",
   mut_rate = 0.002,
   exclude_patterns = "-(RM|RP)",

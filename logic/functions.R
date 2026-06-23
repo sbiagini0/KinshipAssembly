@@ -57,6 +57,40 @@ sex_label <- function(x) {
   "UNK"
 }
 
+#' Align unknown sex with structural parent role for pedigree plotting.
+#'
+#' kinship2 rejects individuals coded unknown (0) who appear as a father or mother.
+#' Used on plot copies only; does not affect stored LR hypotheses.
+#' @param ped A [pedtools::ped()] object.
+#' @param ids Individual labels to check, or `NULL` for all members.
+#' @return `ped` with sex updated where role implies M/F.
+align_sex_for_plot <- function(ped, ids = NULL) {
+  if (is.null(ped) || !is.ped(ped)) return(ped)
+  labs <- labels(ped)
+  if (length(labs) == 0L) return(ped)
+  if (is.null(ids)) {
+    ids <- labs
+  } else {
+    ids <- intersect(as.character(ids), labs)
+  }
+  if (length(ids) == 0L) return(ped)
+  father_of <- vapply(labs, function(k) father(ped, id = k)[1], character(1))
+  mother_of <- vapply(labs, function(k) mother(ped, id = k)[1], character(1))
+  for (id in ids) {
+    s <- as.integer(getSex(ped, ids = id)[1])
+    if (!is.na(s) && s %in% c(1L, 2L)) next
+    is_fa <- id %in% father_of
+    is_mo <- id %in% mother_of
+    new_sex <- NULL
+    if (is_fa && !is_mo) new_sex <- 1L
+    if (is_mo && !is_fa) new_sex <- 2L
+    if (!is.null(new_sex)) {
+      ped <- setSex(ped, ids = id, sex = new_sex)
+    }
+  }
+  ped
+}
+
 #' Test whether object is a non-singleton pedigree.
 #' @param obj R object.
 #' @return Logical.
@@ -255,14 +289,17 @@ extract_ped <- function(x) {
 #' `pedFamilias::readFam(..., prefixAdded = "EXTRA_")` may label the missing person as
 #' `EXTRA_1`. Before [pedtools::mergePed()], that placeholder is relabelled in two steps:
 #' `EXTRA_1` -> `transient` (see `CONFIG$merge_mp_transient_label`) -> `mp_id`, so the merge key
-#' is never an `EXTRA_*` label.
+#' is never an `EXTRA_*` label. If `mp_id` is already present, redundant `EXTRA_1` is dropped when
+#' safe, otherwise relabelled to `CONFIG$extra_person_label` (default `"EXTRA_PERSON"`).
 #' @param ped A [pedtools::ped()] object.
 #' @param mp_id Missing-person label (same as `mergePed(..., by = mp_id)` and UI).
 #' @param transient Internal bridge ID; default is `CONFIG$merge_mp_transient_label` or
 #'   `"__KINSHIP_MP__"` if `CONFIG` is unavailable.
+#' @param extra_person_label Label for a redundant `EXTRA_1` that cannot be removed; default
+#'   `CONFIG$extra_person_label` or `"EXTRA_PERSON"`.
 #' @return The pedigree with `EXTRA_1` (and optionally `transient`) relabelled to `mp_id`, or
 #'   `ped` unchanged when neither applies.
-rename_extra1 <- function(ped, mp_id = NULL, transient = NULL) {
+rename_extra1 <- function(ped, mp_id = NULL, transient = NULL, extra_person_label = NULL) {
   if (is.null(mp_id) || !nzchar(as.character(mp_id)[1])) {
     mp_id <- if (exists("CONFIG", inherits = TRUE) &&
                  is.character(CONFIG$mp_id) &&
@@ -281,8 +318,62 @@ rename_extra1 <- function(ped, mp_id = NULL, transient = NULL) {
       "__KINSHIP_MP__"
     }
   }
+  if (is.null(extra_person_label)) {
+    extra_person_label <- if (exists("CONFIG", inherits = TRUE) &&
+                            is.character(CONFIG$extra_person_label) &&
+                            nzchar(CONFIG$extra_person_label)) {
+      CONFIG$extra_person_label
+    } else {
+      "EXTRA_PERSON"
+    }
+  }
   ped_out <- ped
-  if ("EXTRA_1" %in% labels(ped_out)) {
+  labs <- labels(ped_out)
+  mp_count <- sum(labs == mp_id, na.rm = TRUE)
+  if (mp_count > 1L) {
+    stop(sprintf(
+      "Duplicated ID label '%s' in pedigree '%s' (%d individuals). Each person must have a unique ID; check your .fam file.",
+      mp_id, as.character(famid(ped_out) %||% "?")[1], mp_count
+    ), call. = FALSE)
+  }
+
+  has_mp <- mp_id %in% labs
+  has_extra <- "EXTRA_1" %in% labs
+
+  # File already names the missing person (mp_id). EXTRA_1 is a redundant readFam slot.
+  if (has_mp) {
+    if (has_extra) {
+      ped_trim <- tryCatch(
+        removeIndividuals(
+          ped_out,
+          ids = "EXTRA_1",
+          remove = "descendants",
+          verbose = FALSE
+        ),
+        error = function(e) NULL
+      )
+      if (is.ped(ped_trim) &&
+          length(labels(ped_trim)) > 0L &&
+          mp_id %in% labels(ped_trim)) {
+        ped_out <- ped_trim
+      } else {
+        park <- as.character(extra_person_label)[1]
+        if (park %in% labs) {
+          park <- make.unique(c(park, labs), sep = "_")[1]
+        }
+        ped_out <- relabel(
+          ped_out,
+          new = park,
+          old = "EXTRA_1",
+          reorder = FALSE,
+          returnLabs = FALSE
+        )
+      }
+    }
+    return(ped_out)
+  }
+
+  if (has_extra) {
     ped_out <- relabel(
       ped_out,
       new = transient,
@@ -291,7 +382,7 @@ rename_extra1 <- function(ped, mp_id = NULL, transient = NULL) {
       returnLabs = FALSE
     )
   }
-  if (transient %in% labels(ped_out)) {
+  if (transient %in% labels(ped_out) && !(mp_id %in% labels(ped_out))) {
     ped_out <- relabel(
       ped_out,
       new = mp_id,
@@ -303,32 +394,83 @@ rename_extra1 <- function(ped, mp_id = NULL, transient = NULL) {
   ped_out
 }
 
-#' Count Mendelian-inconsistent markers per MPI pedigree
+#' Apply [rename_extra1()] to each pedigree once (avoids repeated work in MPI x POIc loops).
+#' @param ped_list Named list of [pedtools::ped()] objects.
+#' @param mp_id Missing-person label.
+#' @return List of pedigrees with `EXTRA_1` resolved.
+normalize_ped_list_extra1 <- function(ped_list, mp_id) {
+  if (is.null(ped_list) || length(ped_list) == 0L) {
+    return(ped_list)
+  }
+  resolved <- character(0)
+  out <- lapply(ped_list, function(p) {
+    labs <- labels(p)
+    if ("EXTRA_1" %in% labs && mp_id %in% labs) {
+      resolved <<- c(resolved, as.character(famid(p) %||% "?")[1])
+    }
+    rename_extra1(p, mp_id = mp_id)
+  })
+  resolved <- unique(resolved)
+  if (length(resolved) > 0L) {
+    log_info(sprintf(
+      "Resolved redundant EXTRA_1 in %d pedigree(s) where '%s' is already present: %s",
+      length(resolved), mp_id, paste(resolved, collapse = ", ")
+    ))
+  }
+  out
+}
+
+#' Subset a named pedigree list by selected family names (preserves one entry per name).
+#' @param ped_list Named list of [pedtools::ped()] objects.
+#' @param selected Character vector of list names to keep.
+#' @return Named sub-list in the order of `selected`.
+subset_named_ped_list <- function(ped_list, selected) {
+  if (is.null(ped_list) || length(ped_list) == 0L) {
+    return(ped_list)
+  }
+  if (is.null(selected) || length(selected) == 0L) {
+    return(ped_list)
+  }
+  selected <- unique(as.character(selected))
+  selected <- selected[nzchar(selected)]
+  out <- list()
+  for (nm in selected) {
+    if (nm %in% names(ped_list)) {
+      out[[nm]] <- ped_list[[nm]]
+    }
+  }
+  out
+}
+
+#' Count Mendelian-inconsistent markers per pedigree
 #'
 #' Uses [pedtools::mendelianCheck()] with `remove = FALSE`. Pedigrees are not modified; the count is
 #' the length of failing marker indices (intra-family checks).
-#' @param mpi_list Named list of MPI [pedtools::ped()] objects.
-#' @return Named integer vector: MPI family id -> number of inconsistent markers (`0` if none).
-mpi_mendelian_mismatch_counts <- function(mpi_list) {
-  if (is.null(mpi_list) || length(mpi_list) == 0) {
+#' @param ped_list Named list of MPI or POI Component [pedtools::ped()] objects.
+#' @return Named integer vector: family id -> number of inconsistent markers (`0` if none).
+pedigree_mendelian_mismatch_counts <- function(ped_list) {
+  if (is.null(ped_list) || length(ped_list) == 0) {
     return(structure(integer(0), names = character(0)))
   }
-  n <- length(mpi_list)
+  n <- length(ped_list)
   counts <- integer(n)
-  nm <- names(mpi_list)
+  nm <- names(ped_list)
   for (i in seq_len(n)) {
-    ped <- mpi_list[[i]]
+    ped <- ped_list[[i]]
     err_idx <- mendelianCheck(ped, remove = FALSE, verbose = FALSE)
     counts[i] <- as.integer(length(err_idx))
   }
   if (is.null(nm)) {
     nm <- vapply(seq_len(n), function(i) {
-      as.character(famid(mpi_list[[i]]))[1]
+      as.character(famid(ped_list[[i]]))[1]
     }, character(1))
   }
   names(counts) <- nm
   counts
 }
+
+#' @rdname pedigree_mendelian_mismatch_counts
+mpi_mendelian_mismatch_counts <- pedigree_mendelian_mismatch_counts
 
 #' Extract locus attributes from MPI pedigrees
 #'
@@ -874,6 +1016,8 @@ build_lr_modal_detail_df <- function(
 #' @param verbose If TRUE, more `log_debug` output.
 #' @param progress Optional Shiny progress object with `$set(value, detail)`.
 #' @param mut_model,mut_rate,mut_range,mut_range2 Mutation model applied to `locus_attributes` before building (H0/H1).
+#' @param mp_sex_unknown If `TRUE`, set missing-person sex to unknown and skip the M/F pairing filter.
+#' @param comparison_pairs Optional `data.frame` with columns `mpi` and `poic`; if `NULL`, all MPI x POIc combinations are built.
 #' @return Named list: keys `"MPI_FAM+POIc_FAM"`, values `list(Ped 1 = ..., Ped 2 = list(_comp1, _comp2))`.
 build_pedigree_hypotheses <- function(MPI,
                      poic,
@@ -884,7 +1028,9 @@ build_pedigree_hypotheses <- function(MPI,
                      mut_model = "none",
                      mut_rate = NULL,
                      mut_range = NULL,
-                     mut_range2 = NULL) {
+                     mut_range2 = NULL,
+                     mp_sex_unknown = FALSE,
+                     comparison_pairs = NULL) {
   if (is.null(mp_id) || !nzchar(as.character(mp_id)[1])) {
     mp_id <- if (exists("CONFIG", inherits = TRUE) &&
                  is.character(CONFIG$mp_id) &&
@@ -897,7 +1043,9 @@ build_pedigree_hypotheses <- function(MPI,
   
   total_comparisons <- length(MPI) * length(poic)
   log_info("Building MPI–POI Component hypotheses")
-  log_info(sprintf("Total comparisons: %d", total_comparisons))
+  if (isTRUE(mp_sex_unknown)) {
+    log_info("MP sex forced to unknown: all MPI/DVI x POI Component pairs will be attempted")
+  }
   log_debug(sprintf("MPI: %d pedigrees, POI Component: %d pedigrees", length(MPI), length(poic)))
   
   locus_attributes <- tryCatch(
@@ -914,49 +1062,85 @@ build_pedigree_hypotheses <- function(MPI,
   )
   log_info("Mutation models attached to locus attributes for merged Ped 1")
   
+  MPI <- normalize_ped_list_extra1(MPI, mp_id)
+  poic <- normalize_ped_list_extra1(poic, mp_id)
+  
+  mpi_keys <- names(MPI)
+  poic_keys <- names(poic)
+  if (is.null(mpi_keys) || length(mpi_keys) != length(MPI)) {
+    mpi_keys <- paste0("MPI_", seq_along(MPI))
+    names(MPI) <- mpi_keys
+  }
+  if (is.null(poic_keys) || length(poic_keys) != length(poic)) {
+    poic_keys <- paste0("POIc_", seq_along(poic))
+    names(poic) <- poic_keys
+  }
+  
+  if (is.null(comparison_pairs)) {
+    comparison_pairs <- expand.grid(mpi = mpi_keys, poic = poic_keys, stringsAsFactors = FALSE)
+  } else {
+    comparison_pairs <- as.data.frame(comparison_pairs, stringsAsFactors = FALSE)
+    if (!all(c("mpi", "poic") %in% names(comparison_pairs))) {
+      stop("comparison_pairs must have columns 'mpi' and 'poic'", call. = FALSE)
+    }
+    comparison_pairs$mpi <- as.character(comparison_pairs$mpi)
+    comparison_pairs$poic <- as.character(comparison_pairs$poic)
+  }
+  
+  total_comparisons <- nrow(comparison_pairs)
+  log_info(sprintf("Total comparisons: %d", total_comparisons))
+  
   out <- list()
   merge_failures <- list()
   sex_filtered <- character(0)
   markers <- vapply(locus_attributes, function(x) as.character(x$name)[1], character(1))
   log_debug(sprintf("Markers available: %d", length(markers)))
   
-  current_comparison <- 0
-  
-  for (i in seq_along(MPI)) {
-    ped_MPI0 <- MPI[[i]]
-    fam1 <- famid(ped_MPI0) %||% paste0("MPI_", i)
+  for (current_comparison in seq_len(total_comparisons)) {
+    fam1 <- comparison_pairs$mpi[current_comparison]
+    fam2 <- comparison_pairs$poic[current_comparison]
+    
+    if (!fam1 %in% names(MPI) || !fam2 %in% names(poic)) {
+      log_debug(sprintf("Skip pair %s + %s: pedigree not in loaded lists", fam1, fam2))
+      next
+    }
+    
+    ped_MPI0 <- MPI[[fam1]]
+    ped_poic0 <- poic[[fam2]]
+    key <- paste0(fam1, "+", fam2)
+    
+    if (!is.null(progress) && is.function(progress$set)) {
+      tryCatch({
+        progress$set(
+          value = current_comparison / total_comparisons,
+          detail = sprintf("%s + %s (%d/%d)", fam1, fam2, current_comparison, total_comparisons)
+        )
+      }, error = function(e) {
+        invisible()
+      })
+    }
+    
+    log_debug(sprintf("Comparison %d/%d: %s", current_comparison, total_comparisons, key))
 
-    for (j in seq_along(poic)) {
-      current_comparison <- current_comparison + 1
-      
-      if (!is.null(progress) && is.function(progress$set)) {
-        tryCatch({
-          progress$set(
-            value = current_comparison / total_comparisons,
-            detail = sprintf("%s + %s (%d/%d)", fam1, 
-                            famid(poic[[j]]) %||% paste0("POIc_", j),
-                            current_comparison, total_comparisons)
-          )
-        }, error = function(e) {
-          invisible()
-        })
+    ped_MPI <- ped_MPI0
+    ped_poic <- ped_poic0
+
+      if (isTRUE(mp_sex_unknown)) {
+        if (mp_id %in% labels(ped_MPI)) {
+          ped_MPI <- setSex(ped_MPI, ids = mp_id, sex = 0)
+        }
+        if (mp_id %in% labels(ped_poic)) {
+          ped_poic <- setSex(ped_poic, ids = mp_id, sex = 0)
+        }
       }
-      
-      ped_poic0 <- poic[[j]]
-      fam2 <- famid(ped_poic0) %||% paste0("POIc_", j)
-
-      key <- paste0(fam1, "+", fam2)
-
-      log_debug(sprintf("Comparison %d/%d: %s", current_comparison, total_comparisons, key))
-
-      ped_MPI <- rename_extra1(ped_MPI0, mp_id)
-      ped_poic <- rename_extra1(ped_poic0, mp_id)
 
       ## 1. Missing-person sex compatibility filter
       ## Rule:
       ## - MPI M/F -> only merge with POI Component M/F of the same sex
       ## - MPI UNK   -> merge with both POI Component sexes
-      if (mp_id %in% labels(ped_MPI) && mp_id %in% labels(ped_poic)) {
+      ## Skipped when mp_sex_unknown is TRUE (sex already set to unknown above).
+      if (!isTRUE(mp_sex_unknown) &&
+          mp_id %in% labels(ped_MPI) && mp_id %in% labels(ped_poic)) {
         s_MPI <- as.integer(getSex(ped_MPI, ids = mp_id)[1])
         s_poic <- as.integer(getSex(ped_poic, ids = mp_id)[1])
 
@@ -1311,15 +1495,20 @@ build_pedigree_hypotheses <- function(MPI,
       out[[key]] <- mpi_poic
       log_debug(sprintf("Hypothesis %s OK (%d/%d)", 
                        key, current_comparison, total_comparisons))
-    }
   }
 
   if (length(merge_failures) > 0) {
     lines <- paste0("  ", names(merge_failures), ": ", unlist(merge_failures, use.names = FALSE))
-    stop(sprintf(
-      "mergePed failed for %d of %d MPI–POI pair(s). Check MP ID, sex, and structural compatibility.\n%s",
-      length(merge_failures), total_comparisons, paste(lines, collapse = "\n")
-    ), call. = FALSE)
+    if (length(out) == 0L) {
+      stop(sprintf(
+        "mergePed failed for %d of %d MPI–POI pair(s). Check MP ID, sex, and structural compatibility.\n%s",
+        length(merge_failures), total_comparisons, paste(lines, collapse = "\n")
+      ), call. = FALSE)
+    }
+    log_info(sprintf(
+      "mergePed failed for %d of %d MPI–POI pair(s); %d hypothesis(es) built.\n%s",
+      length(merge_failures), total_comparisons, length(out), paste(lines, collapse = "\n")
+    ))
   }
 
   if (length(sex_filtered) > 0) {
@@ -1752,6 +1941,7 @@ missing_branch_plot <- function(
   # H0: MP == POI
   # ------------------------------------------------------------
   ped_H0 <- relabel(ped_fam, new = POI_id, old = missing_id)
+  ped_H0 <- align_sex_for_plot(ped_H0)
 
   labs_H0 <- labs[labs != missing_id]
   labs_H0 <- c(labs_H0, setNames(POI_id, POI_id))
@@ -1792,6 +1982,9 @@ missing_branch_plot <- function(
   mp_father <- father(ped_fam, id = missing_id)[1]
   mp_mother <- mother(ped_fam, id = missing_id)[1]
   mp_sex <- as.integer(getSex(ped_fam, ids = missing_id)[1])
+  if (is.na(mp_sex) || !mp_sex %in% c(1L, 2L)) {
+    mp_sex <- as.integer(getSex(align_sex_for_plot(ped_fam, missing_id), ids = missing_id)[1])
+  }
 
   ped_fam_h1 <- tryCatch(
     addChildren(
@@ -1811,6 +2004,7 @@ missing_branch_plot <- function(
     log_debug("H1 family panel is not a ped after addChildren; fallback to ped_MPI")
     ped_fam_h1 <- ped_MPI
   }
+  ped_fam_h1 <- align_sex_for_plot(ped_fam_h1)
 
   labs_fam <- labs[labs %in% labels(ped_fam_h1)]
   names(labs_fam) <- names(labs)[labs %in% labels(ped_fam_h1)]
@@ -1842,6 +2036,7 @@ missing_branch_plot <- function(
 
 
   ped_poi_h1 <- ped_poi
+  ped_poi_h1 <- align_sex_for_plot(ped_poi_h1, POI_id)
 
   hatched_poi <- intersect(hatched, labels(ped_poi_h1))
   if (length(hatched_poi) == 0) hatched_poi <- NULL

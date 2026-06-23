@@ -111,9 +111,9 @@ ui <- fluidPage(
                  
                  radioGroupButtons(
                    inputId = "comparison_mode",
-                  label = NULL,
-                  choices = c("All vs all" = "all", 
-                              "Choose comparisons" = "custom"),
+                   label = tags$span(icon("project-diagram"), " Comparisons"),
+                   choices = c("All vs all" = "all", 
+                               "Choose comparisons" = "custom"),
                    selected = "all",
                    checkIcon = list(
                      yes = icon("check-circle", style = "color: #28a745"),
@@ -128,10 +128,28 @@ ui <- fluidPage(
                  
                  uiOutput("comparison_select_ui"),
                  
+                 tags$hr(style = "border-top: 1px solid #e0e0e0; margin: 20px 0;"),
+                 
+                 checkboxGroupButtons(
+                   inputId = "mp_sex_unknown",
+                   label = tags$span(icon("venus-mars"), " Missing person sex"),
+                   choices = c("Unknown \u2014 all pairs" = "yes"),
+                   selected = character(0),
+                   checkIcon = list(
+                     yes = icon("check-circle", style = "color: #28a745"),
+                     no = icon("circle", style = "color: #ccc")
+                   ),
+                   justified = TRUE,
+                   status = "primary"
+                 ),
+                 
+                 tags$p(class = "help-text",
+                        "When enabled, MP sex is treated as unknown so every MPI/DVI family is paired with every POI Component (no M/F filter)."),
+                 
                  tags$hr(style = "border-top: 1px solid #e0e0e0; margin: 20px 0;")
                ),
                
-               numericInput("lr_threshold", 
+               numericInput("lr_threshold",
                           label = tags$span(icon("filter"), " LR threshold"),
                           value = 1,
                           min = 0,
@@ -196,6 +214,7 @@ ui <- fluidPage(
                               tags$li(tags$strong("MPI/DVI"), " \u2014 Name of the MPI/DVI family."),
                               tags$li(tags$strong("MPI_mismatch"), " \u2014 Mendelian inconsistencies inside the MPI/DVI."),
                                tags$li(tags$strong("POIc"), " \u2014 Name of the POI Component family being compared."),
+                               tags$li(tags$strong("POIc_mismatch"), " \u2014 Mendelian inconsistencies inside the POI Component."),
                                tags$li(tags$strong("LR"), " \u2014 Total likelihood ratio for this pair (support for \u201csame person\u201d vs unrelated)."),
                               tags$li(tags$strong("POI_sex"), " \u2014 Sex recorded for the POI in this comparison (M / F / UNK)."),
                                tags$li(tags$strong("nComp"), " \u2014 Number of typed relatives in the POI Component branch (the POI label excluded)."),
@@ -249,6 +268,7 @@ ui <- fluidPage(
                      ),
                      tags$li(
                        tags$strong("Run"), " \u2014 Click ", tags$strong("Compute LR"), ". ",
+                       "Pedigrees are built with your current settings, then LR is calculated. ",
                        "Large jobs can take a while; use ", tags$strong("Stop"), " if needed."
                      ),
                      tags$li(
@@ -259,7 +279,7 @@ ui <- fluidPage(
                        tags$strong("Open a row"), " \u2014 Click a row to see pedigrees, genotypes, and per-marker LRs, and to download an image or CSV."
                      ),
                      tags$li(
-                       tags$strong("Export"), " \u2014 ", tags$strong("Download report"), " saves a CSV of the rows currently shown, plus a short summary block at the end."
+                       tags$strong("Export"), " \u2014 ", tags$strong("Download report"), " saves a CSV of the full results table (all pairs), plus a short summary block at the end. The on-screen table still respects the LR threshold."
                      ),
                      tags$li(
                        tags$strong("Reset"), " \u2014 ", tags$strong("Reset"), " clears uploads and results for a new session."
@@ -274,7 +294,8 @@ ui <- fluidPage(
                     tags$li("Alleles that do not match the panel are set to missing so the LR stays consistent."),
                     tags$li("If both alleles at a marker are missing, that marker does not help for that pair."),
                    tags$li("More markers and more MPI/DVI\u00d7POIc pairs mean longer run times."),
-                    tags$li("The ", tags$strong("Missing person ID"), " must be spelled exactly as in the pedigrees.")
+                    tags$li("The ", tags$strong("Missing person ID"), " must be spelled exactly as in the pedigrees."),
+                    tags$li(tags$strong("Unknown \u2014 all pairs"), " (Comparison mode) forces MP sex to unknown so MPI/DVI families are not filtered by M/F when building comparisons.")
                   )
               ),
                

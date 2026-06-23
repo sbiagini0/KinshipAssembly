@@ -10,6 +10,7 @@ server <- function(input, output, session) {
       MPI = character(0),
       MPI_mismatch = integer(0),
       POIc = character(0),
+      POIc_mismatch = integer(0),
       LR = numeric(0),
       POI_sex = character(0),
       nComp = integer(0),
@@ -50,6 +51,7 @@ server <- function(input, output, session) {
     mpi_load_error = NULL,
     poic_load_error = NULL,
     mpi_mendelian_mismatch = NULL,  # named int: MPI fam id -> N markers failing mendelianCheck (remove=FALSE)
+    poic_mendelian_mismatch = NULL,  # named int: POIc fam id -> N markers failing mendelianCheck (remove=FALSE)
     file_input_revision = 0L      # increment on reset to recreate fileInputs (browser keeps stale names otherwise)
   )
   
@@ -94,10 +96,10 @@ server <- function(input, output, session) {
   # OBSERVERS AND EVENTS
   # ============================================
   
-  # Helper: build joint pedigrees once both files are loaded
+  # Helper: build joint pedigrees (called from Compute LR, not on file load / config change)
   build_pedigrees <- function() {
     if (is.null(values$mpi_data) || is.null(values$poic_data) || is.null(values$locus_attributes)) {
-      return(NULL)
+      return(FALSE)
     }
     
     log_info("Building combined pedigrees")
@@ -113,7 +115,7 @@ server <- function(input, output, session) {
       if (is.null(input$mut_model) || input$mut_model == "") {
         showNotification("Select a mutation model to continue.", 
                          type = "error", duration = 5)
-        return(NULL)
+        return(FALSE)
       }
       
       mut_model_val <- input$mut_model
@@ -149,6 +151,46 @@ server <- function(input, output, session) {
         NULL
       }
       
+      mp_sex_unknown_val <- isTRUE("yes" %in% input$mp_sex_unknown)
+      
+      comparison_mode_val <- if (!is.null(input$comparison_mode)) {
+        input$comparison_mode
+      } else {
+        "all"
+      }
+      mpi_for_build <- values$mpi_data
+      poic_for_build <- values$poic_data
+      comparison_pairs <- NULL
+      if (identical(comparison_mode_val, "custom")) {
+        if (is.null(input$selected_mpi) || length(input$selected_mpi) == 0L ||
+            is.null(input$selected_poic) || length(input$selected_poic) == 0L) {
+          showNotification(
+            "Select at least one MPI and one POI Component for custom comparisons.",
+            type = "error", duration = 5
+          )
+          return(FALSE)
+        }
+        mpi_for_build <- subset_named_ped_list(values$mpi_data, input$selected_mpi)
+        poic_for_build <- subset_named_ped_list(values$poic_data, input$selected_poic)
+        if (length(mpi_for_build) == 0L || length(poic_for_build) == 0L) {
+          showNotification(
+            "No valid MPI or POI Component selection for custom comparisons.",
+            type = "error", duration = 5
+          )
+          return(FALSE)
+        }
+        comparison_pairs <- expand.grid(
+          mpi = names(mpi_for_build),
+          poic = names(poic_for_build),
+          stringsAsFactors = FALSE
+        )
+        log_info(sprintf(
+          "Custom comparison mode: building %d MPI x %d POI Component = %d pair(s): %s",
+          length(mpi_for_build), length(poic_for_build), nrow(comparison_pairs),
+          paste(paste0(comparison_pairs$mpi, "+", comparison_pairs$poic), collapse = ", ")
+        ))
+      }
+      
       withProgress(message = "Building pedigrees...", value = 0, {
         progress_obj <- list(
           set = function(value, detail = "") {
@@ -162,8 +204,8 @@ server <- function(input, output, session) {
         
         values$mpi_poic_list <- tryCatch({
           build_pedigree_hypotheses(
-            MPI = values$mpi_data,
-            poic = values$poic_data,
+            MPI = mpi_for_build,
+            poic = poic_for_build,
             locus_attributes = values$locus_attributes,
             mp_id = mp_id_val,
             verbose = CONFIG$info,
@@ -171,37 +213,49 @@ server <- function(input, output, session) {
             mut_model = mut_model_val,
             mut_rate = mut_rate_val,
             mut_range = mut_range_val,
-            mut_range2 = mut_range2_val
+            mut_range2 = mut_range2_val,
+            mp_sex_unknown = mp_sex_unknown_val,
+            comparison_pairs = comparison_pairs
           )
         }, error = function(e) {
           stop(sprintf("Error building pedigrees: %s", conditionMessage(e)))
         })
         
-        setProgress(value = 1, detail = paste("Done â€”", length(values$mpi_poic_list), "combinations (100%)"))
+        setProgress(value = 1, detail = paste("Done —", length(values$mpi_poic_list), "combinations (100%)"))
       })
       
       values$lr_details_by_key <- NULL
       
+      if (is.null(values$mpi_poic_list) || length(values$mpi_poic_list) == 0L) {
+        showNotification("No pedigree combinations could be built with the current settings.", 
+                         type = "warning", duration = 5)
+        return(FALSE)
+      }
+      
       log_info(sprintf("Pedigree construction completed: %d combinations generated", length(values$mpi_poic_list)))
-      showNotification(paste("Pedigrees built:", length(values$mpi_poic_list), "combinations"), 
-                       type = "message", duration = 3)
+      TRUE
       
     }, error = function(e) {
       showNotification(paste("Error building pedigrees:", conditionMessage(e)), 
                        type = "error", duration = 5)
       values$mpi_poic_list <- NULL
+      FALSE
     })
   }
   
-  # Rebuild hypotheses when mutation parameters or mp_id change after files are loaded
+  # Drop cached hypotheses/results when analysis settings change (rebuilt on Compute LR)
   observeEvent(
-    list(input$mut_model, input$mut_rate, input$mut_range, input$mut_range2, input$mp_id),
+    list(
+      input$mut_model, input$mut_rate, input$mut_range, input$mut_range2,
+      input$mp_id, input$mp_sex_unknown, input$comparison_mode,
+      input$selected_mpi, input$selected_poic
+    ),
     {
       if (!isTRUE(values$data_loaded)) return()
-      if (is.null(values$mpi_data) || is.null(values$poic_data) || is.null(values$locus_attributes)) {
-        return()
-      }
-      build_pedigrees()
+      values$mpi_poic_list <- NULL
+      values$lr_details_by_key <- NULL
+      values$results <- NULL
+      values$analysis_complete <- FALSE
     },
     ignoreInit = TRUE
   )
@@ -271,10 +325,21 @@ server <- function(input, output, session) {
           setProgress(value = 0.95, detail = "Finalising (95%)...")
           
           values$poic_data <- poic_harmonised
+          values$poic_mendelian_mismatch <- pedigree_mendelian_mismatch_counts(values$poic_data)
+          n_poic_mm <- values$poic_mendelian_mismatch
+          log_info(sprintf(
+            "Mendelian check (POI Component): %d pedigrees, %d with >=1 inconsistent marker",
+            length(n_poic_mm), sum(n_poic_mm > 0L, na.rm = TRUE)
+          ))
+          for (nm in names(n_poic_mm)) {
+            if (n_poic_mm[[nm]] > 0L) {
+              log_info(sprintf("  POI Component %s: %d inconsistent marker(s) (intrafamily)", nm, n_poic_mm[[nm]]))
+            }
+          }
           n_poic <- length(values$poic_data)
           
           # Step 8: done (100%)
-          setProgress(value = 1, detail = paste("Done â€”", n_poic, "pedigrees (100%)"))
+          setProgress(value = 1, detail = paste("Done —", n_poic, "pedigrees (100%)"))
         })
         
         showNotification(paste("POI Component file loaded:", n_poic, "pedigrees"), 
@@ -291,12 +356,10 @@ server <- function(input, output, session) {
         })
       }
       
-      # When both files are loaded, build combined pedigrees
+      # When both files are loaded, ready for analysis (pedigrees built on Compute LR)
       if (!is.null(values$mpi_data) && !is.null(values$poic_data) && !is.null(values$locus_attributes)) {
         values$data_loaded <- TRUE
-        log_info("Both files loaded; building combined pedigrees")
-        build_pedigrees()
-        shinyjs::enable("run_analysis")
+        log_info("Both files loaded; ready for analysis")
       }
       
     }, error = function(e) {
@@ -322,6 +385,7 @@ server <- function(input, output, session) {
       message("Error loading POI Component file: ", error_msg)
       
       values$poic_data <- NULL
+      values$poic_mendelian_mismatch <- NULL
       values$data_loaded <- FALSE
     })
     },
@@ -398,7 +462,7 @@ server <- function(input, output, session) {
           setProgress(value = 0.9, detail = "Finalising (90%)...")
           
           values$mpi_data <- mpi_harmonised
-          values$mpi_mendelian_mismatch <- mpi_mendelian_mismatch_counts(values$mpi_data)
+          values$mpi_mendelian_mismatch <- pedigree_mendelian_mismatch_counts(values$mpi_data)
           n_mm <- values$mpi_mendelian_mismatch
           log_info(sprintf(
             "Mendelian check (MPI): %d pedigrees, %d with >=1 inconsistent marker",
@@ -412,7 +476,7 @@ server <- function(input, output, session) {
           n_mpi <- length(values$mpi_data)
           
           # Step 8: done (100%)
-          setProgress(value = 1, detail = paste("Done â€”", n_mpi, "pedigrees (100%)"))
+          setProgress(value = 1, detail = paste("Done —", n_mpi, "pedigrees (100%)"))
         })
         
         showNotification(paste("MPI file loaded:", n_mpi, "pedigrees"), 
@@ -429,12 +493,10 @@ server <- function(input, output, session) {
         })
       }
       
-      # When both files are loaded, build combined pedigrees
+      # When both files are loaded, ready for analysis (pedigrees built on Compute LR)
       if (!is.null(values$mpi_data) && !is.null(values$poic_data) && !is.null(values$locus_attributes)) {
         values$data_loaded <- TRUE
-        log_info("Both files loaded; building combined pedigrees")
-        build_pedigrees()
-        shinyjs::enable("run_analysis")
+        log_info("Both files loaded; ready for analysis")
       }
       
     }, error = function(e) {
@@ -487,7 +549,9 @@ server <- function(input, output, session) {
         !is.null(input$selected_poic) && length(input$selected_poic) > 0
     }
     
-    if (values$data_loaded && !values$analysis_running && mpi_loaded && poic_loaded && comparison_ok) {
+    mut_ok <- !is.null(input$mut_model) && nzchar(input$mut_model)
+    
+    if (values$data_loaded && !values$analysis_running && mpi_loaded && poic_loaded && comparison_ok && mut_ok) {
       shinyjs::enable("run_analysis")
     } else {
       shinyjs::disable("run_analysis")
@@ -500,7 +564,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # UI for selecting specific MPI Ã— POI Component comparisons when using custom mode
+  # UI for selecting specific MPI × POI Component comparisons when using custom mode
   output$comparison_select_ui <- renderUI({
     req(input$comparison_mode)
     
@@ -543,15 +607,15 @@ server <- function(input, output, session) {
         )
       ),
       tags$p(class = "help-text",
-             "Select at least one MPI and one POI Component to enable the run.")
+             "Select at least one MPI and one POI Component; only those pairs are built and compared.")
     )
   })
   
   # Run comparisons and compute LR values
   observeEvent(input$run_analysis, {
-    req(values$data_loaded, values$mpi_poic_list)
+    req(values$data_loaded)
     
-    log_info("Starting MPI Ã— POI Component comparison analysis")
+    log_info("Starting MPI × POI Component comparison analysis")
     
     # Validate that a mutation model has been selected
     if (is.null(input$mut_model) || input$mut_model == "") {
@@ -564,6 +628,12 @@ server <- function(input, output, session) {
     values$analysis_running <- TRUE
     values$analysis_complete <- FALSE
     values$lr_details_by_key <- NULL
+    values$results <- NULL
+    
+    if (!isTRUE(build_pedigrees())) {
+      values$analysis_running <- FALSE
+      return(NULL)
+    }
     
     # Mutation model parameters
     mut_model_val <- input$mut_model
@@ -585,34 +655,13 @@ server <- function(input, output, session) {
       mut_range2_val <- NULL
     }
     
-    # Apply comparison mode (all vs all vs custom subsets)
-    comparison_mode_val <- if (!is.null(input$comparison_mode)) input$comparison_mode else "all"
+    # mpi_poic_list already contains only the pairs built (all or custom subset)
     mpi_poic_to_compare <- values$mpi_poic_list
     
-    if (comparison_mode_val == "custom") {
-      # Restrict comparisons according to user selections
-      if (!is.null(input$selected_mpi) && length(input$selected_mpi) > 0 &&
-          !is.null(input$selected_poic) && length(input$selected_poic) > 0) {
-        # Filter mpi_poic_list by the selected MPI Ã— POI Component combinations
-        selected_keys <- character(0)
-        for (mpi_name in input$selected_mpi) {
-          for (poic_name in input$selected_poic) {
-            key <- paste0(mpi_name, "+", poic_name)
-            if (key %in% names(mpi_poic_to_compare)) {
-              selected_keys <- c(selected_keys, key)
-            }
-          }
-        }
-        mpi_poic_to_compare <- mpi_poic_to_compare[selected_keys]
-      }
-      
-      # Ensure that some comparisons remain after filtering
-      if (length(mpi_poic_to_compare) == 0) {
-        showNotification("No valid comparisons for the current MPI Ã— POI Component selection.", 
-                         type = "warning", duration = 5)
-        values$analysis_running <- FALSE
-        return()
-      }
+    if (length(mpi_poic_to_compare) == 0L) {
+      showNotification("No comparisons to run.", type = "warning", duration = 5)
+      values$analysis_running <- FALSE
+      return()
     }
     
     progress <- Progress$new(session, min = 0, max = 1)
@@ -699,10 +748,18 @@ server <- function(input, output, session) {
           }
           
           mpi_mm_map <- values$mpi_mendelian_mismatch
+          poic_mm_map <- values$poic_mendelian_mismatch
           fam1c <- as.character(fam1)[1]
+          fam2c <- as.character(fam2)[1]
           mpi_mismatch_val <- if (!is.null(mpi_mm_map) && length(mpi_mm_map) &&
               fam1c %in% names(mpi_mm_map)) {
             as.integer(mpi_mm_map[[fam1c]])
+          } else {
+            NA_integer_
+          }
+          poic_mismatch_val <- if (!is.null(poic_mm_map) && length(poic_mm_map) &&
+              fam2c %in% names(poic_mm_map)) {
+            as.integer(poic_mm_map[[fam2c]])
           } else {
             NA_integer_
           }
@@ -711,6 +768,7 @@ server <- function(input, output, session) {
             MPI = fam1,
             MPI_mismatch = mpi_mismatch_val,
             POIc = fam2,
+            POIc_mismatch = poic_mismatch_val,
             LR = as.numeric(lr),
             POI_sex = sex_label(poi_sex_val),
             nComp = ncomp_val,
@@ -951,7 +1009,7 @@ server <- function(input, output, session) {
   output$config_status_icon <- renderUI({
     if (values$data_loaded) {
       tags$span(icon("check-circle", style = "color: #28a745; margin-left: 10px;"), 
-                title = "Files loaded â€” settings enabled")
+                title = "Files loaded — settings enabled")
     } else {
       tags$span(icon("lock", style = "color: #ccc; margin-left: 10px;"), 
                 title = "Load files to enable")
@@ -961,7 +1019,7 @@ server <- function(input, output, session) {
   output$comparison_status_icon <- renderUI({
     if (values$data_loaded && !is.null(input$mut_model) && input$mut_model != "") {
       tags$span(icon("check-circle", style = "color: #28a745; margin-left: 10px;"), 
-                title = "Settings complete â€” comparison mode enabled")
+                title = "Settings complete — comparison mode enabled")
     } else {
       tags$span(icon("lock", style = "color: #ccc; margin-left: 10px;"), 
                 title = "Complete settings to enable")
@@ -988,8 +1046,10 @@ server <- function(input, output, session) {
   observe({
     if (values$data_loaded && !is.null(input$mut_model) && input$mut_model != "") {
       shinyjs::enable("comparison_mode")
+      shinyjs::enable("mp_sex_unknown")
     } else {
       shinyjs::disable("comparison_mode")
+      shinyjs::disable("mp_sex_unknown")
     }
   })
   
@@ -1078,7 +1138,7 @@ server <- function(input, output, session) {
           c("10", "25", "50", "100", "250", "500", "All")
         ),
         scrollX = TRUE,
-        order = list(list(3, "desc")),
+        order = list(list(4, "desc")),
         dom = "lBfrtip",
         buttons = c("copy", "csv", "excel"),
         columnDefs = list(list(className = "dt-center", targets = "_all"))
@@ -1109,7 +1169,7 @@ server <- function(input, output, session) {
   })
 
   # ============================================
-  # OUTPUT â€” PER-MARKER LR TABLE (DETAIL MODAL)
+  # OUTPUT — PER-MARKER LR TABLE (DETAIL MODAL)
   # Row order matches stored partial LRs; alleles from getAlleles(H0), columns *.1 / *.2
   # ============================================
   output$lr_details_modal_table <- DT::renderDataTable({
@@ -1123,10 +1183,10 @@ server <- function(input, output, session) {
     stored <- values$lr_details_by_key[[key]]
     validate(need(
       !is.null(stored) && length(stored$Marker) > 0,
-      "No per-marker LRs for this pair. Run Â«Compute LRÂ» again."
+      "No per-marker LRs for this pair. Run «Compute LR» again."
     ))
     
-    validate(need(!is.null(values$mpi_poic_list[[key]]), "Hypothesis not found for this MPI Ã— POI Component pair."))
+    validate(need(!is.null(values$mpi_poic_list[[key]]), "Hypothesis not found for this MPI × POI Component pair."))
     
     detail_df <- build_lr_modal_detail_df(
       key = key,
@@ -1424,15 +1484,15 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(values$results)
-      fr <- isolate(filtered_results())
-      if (is.null(fr) || nrow(fr) == 0) {
-        showNotification("No rows to export at the current LR threshold.", type = "warning")
-        stop("No rows to export at the current LR threshold.", call. = FALSE)
+      report_df <- isolate(values$results)
+      if (is.null(report_df) || nrow(report_df) == 0L) {
+        showNotification("No results to export. Run Compute LR first.", type = "warning")
+        stop("No results to export.", call. = FALSE)
       }
-      ss <- add_summary_stats(fr)
+      ss <- add_summary_stats(report_df)
       tryCatch({
         export_to_csv(
-          result_df = fr,
+          result_df = report_df,
           file_path = file,
           summary_stats = ss
         )
@@ -1499,6 +1559,7 @@ server <- function(input, output, session) {
     values$poic_data <- NULL
     values$mpi_data <- NULL
     values$mpi_mendelian_mismatch <- NULL
+    values$poic_mendelian_mismatch <- NULL
     values$data_loaded <- FALSE
     values$locus_loaded <- FALSE
     values$analysis_complete <- FALSE
@@ -1509,7 +1570,7 @@ server <- function(input, output, session) {
     # Recreate file inputs so the browser truly clears filenames (resetInput/shinyjs alone is unreliable)
     values$file_input_revision <- values$file_input_revision + 1L
     
-    # Reset settings / comparison (not the whole sidebar â€” avoids fighting dynamic file UI)
+    # Reset settings / comparison (not the whole sidebar — avoids fighting dynamic file UI)
     shinyjs::reset("config_section")
     shinyjs::reset("comparison_section")
     
@@ -1519,6 +1580,7 @@ server <- function(input, output, session) {
     updateNumericInput(session, "mut_range", value = 0.1)
     updateNumericInput(session, "mut_range2", value = 0.000001)
     updateTextInput(session, "mp_id", value = CONFIG$mp_id)
+    updateCheckboxGroupButtons(session, "mp_sex_unknown", selected = character(0))
     updateNumericInput(session, "lr_threshold", value = 1)
     updateRadioGroupButtons(session, "comparison_mode", selected = "all")
     
